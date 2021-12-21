@@ -18,3 +18,4 @@ for duration in duration_list:
         minutes = (duration % 3600) // 60
         duration %= 60
         print(days, 'дн', hours, 'час', minutes, 'мин', duration, 'сек')
+
