@@ -1,11 +1,10 @@
-from telebot.types import Message
-
 from keyboards.reply.contact import request_contact
 from loader import bot
 from states.contact_information import UserInfoState
+from telebot.types import Message
 
 
-@bot.message_handler(commands=['survey'])
+@bot.message_handler(commands=['survey'], state=True)
 def survey(message: Message) -> None:
     bot.set_state(message.from_user.id, UserInfoState.name, message.chat.id)
     bot.send_message(message.from_user.id, f'Привет, {message.from_user.username}! Введи своё имя.')
@@ -25,7 +24,7 @@ def get_name(message: Message) -> None:
 
 @bot.message_handler(state=UserInfoState.age)
 def get_age(message: Message) -> None:
-    if message.text.isalpha():
+    if message.text.isdigit():
         bot.send_message(message.from_user.id, 'Спасибо, записал. Теперь введи страну проживания.')
         bot.set_state(message.from_user.id, UserInfoState.country, message.chat.id)
 
@@ -62,11 +61,11 @@ def get_contact(message: Message) -> None:
             data['phone_number'] = message.contact.phone_number
 
             text = f'Спасибо за предоставленную информацию. Ваши данные:\n' \
-                   f'Имя - {data["name"]}\n' \
-                   f'Возраст - {data["age"]}\n' \
-                   f'Страна - {data["country"]}\n' \
-                   f'Город - {data["city"]}\n' \
-                   f'Номер телефона - {data["phone_number"]}'
+                   f'Имя: {data["name"]}\n' \
+                   f'Возраст: {data["age"]}\n' \
+                   f'Страна: {data["country"]}\n' \
+                   f'Город: {data["city"]}\n' \
+                   f'Номер телефона: {data["phone_number"]}'
             bot.send_message(message.from_user.id, text)
     else:
         bot.send_message(message.from_user.id, 'Чтобы отправить номер, нажми на кнопку.')
