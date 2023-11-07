@@ -4,7 +4,7 @@ from states.contact_information import UserInfoState
 from telebot.types import Message
 
 
-@bot.message_handler(commands=['survey'], state=True)
+@bot.message_handler(commands=['survey'])
 def survey(message: Message) -> None:
     bot.set_state(message.from_user.id, UserInfoState.name, message.chat.id)
     bot.send_message(message.from_user.id, f'Привет, {message.from_user.username}! Введи своё имя.')
@@ -24,14 +24,20 @@ def get_name(message: Message) -> None:
 
 @bot.message_handler(state=UserInfoState.age)
 def get_age(message: Message) -> None:
-    if message.text.isdigit():
+    if message.text.isdigit() and 0 < int(message.text) < 120:
         bot.send_message(message.from_user.id, 'Спасибо, записал. Теперь введи страну проживания.')
         bot.set_state(message.from_user.id, UserInfoState.country, message.chat.id)
 
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             data['age'] = message.text
     else:
-        bot.send_message(message.from_user.id, 'Возраст должен быть числом.')
+        bot.send_message(message.from_user.id, 'Введите корректный возраст.')
+
+
+# @bot.message_handler(state=UserInfoState.age, is_digit=False)
+# def get_age(message: Message) -> None:
+#     bot.send_message(message.from_user.id, 'Возраст должен быть числом.')
+#     bot.set_state(message.from_user.id, UserInfoState.age, message.chat.id)
 
 
 @bot.message_handler(state=UserInfoState.country)
