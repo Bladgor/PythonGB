@@ -13,11 +13,12 @@ def sql_connection():
 def sql_create_table(conn):
     cursor_obj = conn.cursor()
     cursor_obj.execute(
-        "CREATE TABLE if not exists users(id integer PRIMARY KEY, "
-        "name text, quantity_requests integer)"
+        "CREATE TABLE IF NOT EXISTS Users(id INTEGER PRIMARY KEY, "
+        "name TEXT NOT NULL, quantity_requests INTEGER)"
     )
     cursor_obj.execute(
-        "CREATE TABLE if not exists requests(name text, request text, number_request integer)"
+        "CREATE TABLE IF NOT EXISTS Requests(name TEXT NOT NULL, request TEXT NOT NULL, "
+        "number_request INTEGER)"
     )
 
     conn.commit()
@@ -26,9 +27,9 @@ def sql_create_table(conn):
 def insert_user(conn, name, data):
     cursor_obj = conn.cursor()
     rows = len(cursor_obj.execute('SELECT * FROM users').fetchall())
-    cursor_obj.execute(f'INSERT INTO users(id, name, quantity_requests) '
+    cursor_obj.execute(f'INSERT INTO Users(id, name, quantity_requests) '
                        f'VALUES({rows + 1}, "{name}", 1)')
-    cursor_obj.execute(f'INSERT INTO requests(name, request, number_request) '
+    cursor_obj.execute(f'INSERT INTO Requests(name, request, number_request) '
                        f'VALUES("{name}", "{data}", 1)')
 
     conn.commit()
@@ -36,27 +37,26 @@ def insert_user(conn, name, data):
 
 def update_user(conn, name, data):
     cursor_obj = conn.cursor()
-    quantity = cursor_obj.execute(f'SELECT quantity_requests from users WHERE name = "{name}"').fetchall()[0][0]
+    quantity = cursor_obj.execute(f'SELECT quantity_requests from Users WHERE name = "{name}"').fetchall()[0][0]
     if quantity < 10:
-        cursor_obj.execute(f'UPDATE users SET quantity_requests = {quantity + 1} WHERE name = "{name}"')
-        cursor_obj.execute(f'INSERT INTO requests(name, request, number_request) '
+        cursor_obj.execute(f'UPDATE Users SET quantity_requests = {quantity + 1} WHERE name = "{name}"')
+        cursor_obj.execute(f'INSERT INTO Requests(name, request, number_request) '
                            f'VALUES("{name}", "{data}", {quantity + 1})')
     else:
         cur_data = cursor_obj.execute(
-            f'SELECT request, number_request from requests WHERE name = "Bladgor"').fetchall()
+            f'SELECT request, number_request from Requests WHERE name = "Bladgor"').fetchall()
         for elem in cur_data[1:]:
-            print(elem)
-            cursor_obj.execute(f'UPDATE requests SET request = "{elem[0]}" '
+            cursor_obj.execute(f'UPDATE Requests SET request = "{elem[0]}" '
                                f'WHERE name = "Bladgor" AND number_request = {elem[1] - 1}')
-        cursor_obj.execute(f'INSERT INTO requests(name, request, number_request) '
-                           f'VALUES("{name}", "{data}", 10)')
+        cursor_obj.execute(f'UPDATE Requests SET request = "{data}" '
+                           f'WHERE name = "{name}" AND number_request = 10')
 
     conn.commit()
 
 
 def select_name(conn):
     cursor_obj = conn.cursor()
-    users = cursor_obj.execute('SELECT name FROM users')
+    users = cursor_obj.execute('SELECT name FROM Users')
 
     return users.fetchall()
 
@@ -69,3 +69,5 @@ def database_handler(name_user, request):
         update_user(con, name_user, request)
     else:
         insert_user(con, name_user, request)
+
+    con.close()

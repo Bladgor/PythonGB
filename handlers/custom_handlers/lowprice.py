@@ -25,7 +25,17 @@ def survey(message: Message) -> None:
 
 @bot.message_handler(state=SearchInfoState.city)
 def get_city(message: Message) -> None:
-    if message.text.isalpha():
+    flag = True
+    if len(message.text.split(' ')) == 1:
+        if message.text.find('-'):
+            for elem in message.text.split('-'):
+                if not elem.isalpha():
+                    flag = False
+    else:
+        for elem in message.text.split(' '):
+            if not elem.isalpha():
+                flag = False
+    if flag:
         bot.send_message(message.from_user.id, 'Сколько отелей вывести? (от 1 до 10)', reply_markup=keyboard(keys))
         bot.set_state(message.from_user.id, SearchInfoState.hotels_quantity, message.chat.id)
 
