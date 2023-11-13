@@ -61,13 +61,13 @@ def select_name(conn):
     return users.fetchall()
 
 
-def database_handler(name_user, request):
+def database_handler(name_user, request_data):
     con = sql_connection()
     sql_create_table(con)
 
     if (name_user,) in select_name(con):
-        update_user(con, name_user, request)
+        update_user(con, name_user, request_data)
     else:
-        insert_user(con, name_user, request)
+        insert_user(con, name_user, request_data)
 
     con.close()
