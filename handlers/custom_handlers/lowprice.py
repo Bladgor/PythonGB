@@ -9,19 +9,6 @@ from api_request import search_id_location
 keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 
 
-class CityIdFromDict:
-
-    @classmethod
-    def id_from_dict(cls, processed_dict):
-        for elem in processed_dict:
-            return processed_dict[elem]
-
-    @classmethod
-    def city_from_dict(cls, processed_dict):
-        for elem in processed_dict:
-            return elem.title()
-
-
 def keyboard_numbers(numbers):
     markup = ReplyKeyboardMarkup(row_width=5, resize_keyboard=True)
     row = [KeyboardButton(x) for x in numbers]
@@ -42,12 +29,15 @@ def city_markup(city):
     return destinations
 
 
-@bot.message_handler(commands=['low'])
+@bot.message_handler(commands=['low', 'high', 'custom'])
 def survey(message: Message) -> None:
     bot.send_message(message.from_user.id, f'В каком городе будет проводиться поиск?',
                                            reply_markup=ReplyKeyboardRemove())
 
     bot.set_state(message.from_user.id, SearchInfoState.specify, message.chat.id)
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['command'] = message.text
 
 
 @bot.message_handler(state=SearchInfoState.specify)
@@ -83,8 +73,7 @@ def get_city(message: Message) -> None:
 
 @bot.callback_query_handler(func=lambda call: call.message)
 def choice_callback(call):  # <- passes a CallbackQuery type object to your function
-    bot.set_state(call.from_user.id, SearchInfoState.city, call.message.chat.id)
-    print(f"city id: {call.data}")
+    bot.set_state(call.from_user.id, SearchInfoState.city, call.message.chat.id)  # Похоже ненужная строка
 
     bot.send_message(call.from_user.id, 'Сколько отелей вывести? (от 1 до 10)',
                      reply_markup=keyboard_numbers(keys))
