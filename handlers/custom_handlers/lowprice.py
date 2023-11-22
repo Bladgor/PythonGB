@@ -1,12 +1,17 @@
+import datetime
 from telebot.types import (Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
                            InlineKeyboardMarkup, InlineKeyboardButton)
 from loader import bot
 from states.contact_information import SearchInfoState
 from database.data_processing import database_handler
 from api_request import search_id_location
+from Calendar.calendar import Calendar
 
 
 keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+calendar_instance = Calendar()
+current_date = datetime.datetime.now()  # Установить начальную дату на текущий день текущего месяца
+calendar_instance.current_date, calendar_instance.bot = current_date, bot
 
 
 def keyboard_numbers(numbers):
@@ -19,13 +24,11 @@ def keyboard_numbers(numbers):
 
 def city_markup(city):
     cities = search_id_location(city)
-    # Функция "search_id_location" уже возвращает словарь с нужными именем и id
     destinations = InlineKeyboardMarkup()
     for city in cities:
         destinations.add(InlineKeyboardButton(
             text=city,
-            callback_data=f'{cities[city]}'))
-        print(cities[city], type(cities[city]))
+            callback_data=f'id {cities[city]}'))
     return destinations
 
 
@@ -56,31 +59,67 @@ def get_city(message: Message) -> None:
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             data['city'] = message.text.title()
         bot.send_message(message.from_user.id, 'Уточните, пожалуйста:', reply_markup=city_markup(message.text.title()))
-        # bot.send_message(message.from_user.id, 'Сколько отелей вывести? (от 1 до 10)',
-        #                  reply_markup=keyboard_numbers(keys))
-        # bot.set_state(message.from_user.id, SearchInfoState.specify, message.chat.id)
-
     else:
         bot.send_message(message.from_user.id, 'Город может содержать только буквы.')
 
 
-# @bot.message_handler(state=SearchInfoState.specify)
-# def city_specify(message):
-#     bot.send_message(message.from_user.id, 'Уточните, пожалуйста:', reply_markup=city_markup(message.text.title()))
-#
-#     # bot.set_state(message.from_user.id, SearchInfoState.city, message.chat.id)
+@bot.callback_query_handler(func=lambda call: 'prev_month' in call.data or 'next_month' in call.data)
+def switch_months_callback(call):
+    if call.data == 'prev_month':
+        prev_month = calendar_instance.current_date.month - 1
+        if prev_month == 0:
+            prev_month = 12
+            prev_year = calendar_instance.current_date.year - 1
+        else:
+            prev_year = calendar_instance.current_date.year
+        calendar_instance.current_date = calendar_instance.current_date.replace(year=prev_year, month=prev_month)
+    elif call.data == 'next_month':
+        next_month = calendar_instance.current_date.month + 1
+        if next_month == 13:
+            next_month = 1
+            next_year = calendar_instance.current_date.year + 1
+        else:
+            next_year = calendar_instance.current_date.year
+        calendar_instance.current_date = calendar_instance.current_date.replace(year=next_year, month=next_month)
+    else:
+        bot.send_message(call.from_user.id, text=f'Выбрано: {call.data}')
+
+    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+        check = 'check_out' if 'check_in' in data else 'check_in'
+
+    header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out=f'{check}')
+    if check == 'check_in':
+        select_date = 'Выберите дату заезда'
+    else:
+        select_date = 'Выберите дату выезда'
+    bot.send_message(call.from_user.id, text=f"{select_date}:\n{header}", reply_markup=markup)
 
 
-@bot.callback_query_handler(func=lambda call: call.message)
-def choice_callback(call):  # <- passes a CallbackQuery type object to your function
-    bot.set_state(call.from_user.id, SearchInfoState.city, call.message.chat.id)  # Похоже ненужная строка
+@bot.callback_query_handler(func=lambda call: 'id' in call.data)
+def check_in_callback(call):
+    header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_in')
+    bot.send_message(call.from_user.id, text=f"Выберите дату заезда:\n{header}", reply_markup=markup)
+    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+        data['city_id'] = call.data.split(' ')[1]
+
+
+@bot.callback_query_handler(func=lambda call: 'check_in' in call.data)
+def check_out_callback(call):
+    header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_out')
+    bot.send_message(call.from_user.id, text=f"Отлично!\nТеперь выберите дату выезда:\n{header}", reply_markup=markup)
+    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+        data['check_in'] = call.data.split(' ')[1]
+
+
+@bot.callback_query_handler(func=lambda call: 'check_out' in call.data)
+def choice_callback(call):
 
     bot.send_message(call.from_user.id, 'Сколько отелей вывести? (от 1 до 10)',
                      reply_markup=keyboard_numbers(keys))
     bot.set_state(call.from_user.id, SearchInfoState.hotels_quantity, call.message.chat.id)
 
     with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
-        data['city_id'] = call.data
+        data['check_out'] = call.data.split(' ')[1]
 
 
 @bot.message_handler(state=SearchInfoState.hotels_quantity)
