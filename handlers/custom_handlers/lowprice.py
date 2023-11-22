@@ -29,6 +29,7 @@ def city_markup(city):
         destinations.add(InlineKeyboardButton(
             text=city,
             callback_data=f'id {cities[city]}'))
+
     return destinations
 
 
@@ -89,10 +90,10 @@ def switch_months_callback(call):
 
     header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out=f'{check}')
     if check == 'check_in':
-        select_date = 'Выберите дату заезда'
+        select_a_date = 'Выберите дату заезда'
     else:
-        select_date = 'Выберите дату выезда'
-    bot.send_message(call.from_user.id, text=f"{select_date}:\n{header}", reply_markup=markup)
+        select_a_date = 'Выберите дату выезда'
+    bot.send_message(call.from_user.id, text=f"{select_a_date}:\n{header}", reply_markup=markup)
 
 
 @bot.callback_query_handler(func=lambda call: 'id' in call.data)
@@ -105,20 +106,45 @@ def check_in_callback(call):
 
 @bot.callback_query_handler(func=lambda call: 'check_in' in call.data)
 def check_out_callback(call):
-    header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_out')
-    bot.send_message(call.from_user.id, text=f"Отлично!\nТеперь выберите дату выезда:\n{header}", reply_markup=markup)
-    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
-        data['check_in'] = call.data.split(' ')[1]
+    today = datetime.datetime.now()
+    check_in_date = list(map(int, (call.data.split(' ')[1]).split('.')))
+    selected_date = datetime.datetime(check_in_date[2],
+                                      check_in_date[1],
+                                      check_in_date[0])
+    if selected_date < today:
+        header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_in')
+        bot.send_message(call.from_user.id,
+                         text=f"Дата не может быть прошедшей!\n"
+                              f"Выберите дату заезда:\n{header}",
+                         reply_markup=markup)
+    else:
+        header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_out')
+        bot.send_message(call.from_user.id,
+                         text=f"Отлично!\nТеперь выберите дату выезда:\n{header}",
+                         reply_markup=markup)
+        with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+            data['check_in'] = call.data.split(' ')[1]
 
 
 @bot.callback_query_handler(func=lambda call: 'check_out' in call.data)
 def choice_callback(call):
-
-    bot.send_message(call.from_user.id, 'Сколько отелей вывести? (от 1 до 10)',
-                     reply_markup=keyboard_numbers(keys))
-    bot.set_state(call.from_user.id, SearchInfoState.hotels_quantity, call.message.chat.id)
-
     with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+        check_in_date = list(map(int, data['check_in'].split('.')))
+        check_in_date = datetime.datetime(check_in_date[2], check_in_date[1], check_in_date[0])
+    check_out_date = list(map(int, (call.data.split(' ')[1]).split('.')))
+    selected_date = datetime.datetime(check_out_date[2],
+                                      check_out_date[1],
+                                      check_out_date[0])
+    if selected_date <= check_in_date:
+        header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_out')
+        bot.send_message(call.from_user.id,
+                         text=f"Дата выезда не может быть раньше или равной дате заезда!\n"
+                              f"Выберите дату выезда:\n{header}",
+                         reply_markup=markup)
+    else:
+        bot.send_message(call.from_user.id, 'Сколько отелей вывести? (от 1 до 10)',
+                         reply_markup=keyboard_numbers(keys))
+        bot.set_state(call.from_user.id, SearchInfoState.hotels_quantity, call.message.chat.id)
         data['check_out'] = call.data.split(' ')[1]
 
 
@@ -179,4 +205,3 @@ def get_photo_quantity(message: Message) -> None:
     else:
         bot.send_message(message.from_user.id, 'Введите количество фотографий (от 1 до 10).',
                          reply_markup=keyboard_numbers(keys))
-
