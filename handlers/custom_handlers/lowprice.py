@@ -1,10 +1,10 @@
 import datetime
 from telebot.types import (Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
-                           InlineKeyboardMarkup, InlineKeyboardButton)
+                           InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto)
 from loader import bot
 from states.contact_information import SearchInfoState
 from database.data_processing import database_handler
-from api_request import search_id_location
+from api_request import search_id_location, search_hotels
 from Calendar.calendar import Calendar
 
 
@@ -12,6 +12,12 @@ keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 calendar_instance = Calendar()
 current_date = datetime.datetime.now()  # Установить начальную дату на текущий день текущего месяца
 calendar_instance.current_date, calendar_instance.bot = current_date, bot
+
+
+def date_str_to_datetime(date_text):
+    date_text = list(map(int, date_text.split('.')))
+    date_text = datetime.date(date_text[2], date_text[1], date_text[0])
+    return date_text
 
 
 def keyboard_numbers(numbers):
@@ -36,7 +42,7 @@ def city_markup(city):
 @bot.message_handler(commands=['low', 'high', 'custom'])
 def survey(message: Message) -> None:
     bot.send_message(message.from_user.id, f'В каком городе будет проводиться поиск?',
-                                           reply_markup=ReplyKeyboardRemove())
+                     reply_markup=ReplyKeyboardRemove())
 
     bot.set_state(message.from_user.id, SearchInfoState.specify, message.chat.id)
 
@@ -60,6 +66,17 @@ def get_city(message: Message) -> None:
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             data['city'] = message.text.title()
         bot.send_message(message.from_user.id, 'Уточните, пожалуйста:', reply_markup=city_markup(message.text.title()))
+        #  Строку выше надо будет вернуть, строки ниже удалить
+        #  Для теста, чтобы не делать постоянные запросы к API:
+        # buttons = InlineKeyboardMarkup()
+        # city_dict = {'London, England': 'id 2114', 'London, USA': '5885'}
+        # for city in city_dict:
+        #     buttons.add(InlineKeyboardButton(
+        #         text=city,
+        #         callback_data=f'{city_dict[city]}'
+        #     ))
+        # bot.send_message(message.from_user.id, 'Уточните, пожалуйста:', reply_markup=buttons)
+    #
     else:
         bot.send_message(message.from_user.id, 'Город может содержать только буквы.')
 
@@ -168,7 +185,7 @@ def get_confirm_photo(message: Message) -> None:
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         data['confirm_photo'] = message.text
     if message.text.title() == 'Да':
-        bot.send_message(message.from_user.id, 'Сколько фотографий вывести? (от 1 до 10)',
+        bot.send_message(message.from_user.id, 'Сколько вывести фотографий для каждого отеля? (от 1 до 10)',
                          reply_markup=keyboard_numbers(keys))
         bot.set_state(message.from_user.id, SearchInfoState.photo_quantity, message.chat.id)
 
@@ -184,7 +201,10 @@ def get_confirm_photo(message: Message) -> None:
                f'Вывод фото: {data["confirm_photo"]}\n' \
                f'Кол-во фото: {data["photo_quantity"]}\n'
         bot.send_message(message.from_user.id, text, reply_markup=ReplyKeyboardRemove())
-        bot.delete_state(message.from_user.id, message.chat.id)
+        if data['command'] == '/low':
+            bot.send_message(message.from_user.id, 'Command /low')
+        bot.set_state(message.from_user.id, SearchInfoState.command, message.chat.id)
+        # bot.delete_state(message.from_user.id, message.chat.id)
 
 
 @bot.message_handler(state=SearchInfoState.photo_quantity)
@@ -201,7 +221,42 @@ def get_photo_quantity(message: Message) -> None:
                f'Вывод фото: {data["confirm_photo"]}\n' \
                f'Кол-во фото: {data["photo_quantity"]}\n'
         bot.send_message(message.from_user.id, text, reply_markup=ReplyKeyboardRemove())
-        bot.delete_state(message.from_user.id, message.chat.id)
+        if data['command'] == '/low':
+            check_in, check_out = date_str_to_datetime(data['check_in']), date_str_to_datetime(data['check_out'])
+            quantity_days = (check_out - check_in).days
+            hotels = search_hotels(city_id=data['city_id'],
+                                   check_in=check_in,
+                                   check_out=check_out)
+            index = 1
+            for hotel in hotels:
+                price = hotel[1]["price"]
+                # bot.send_photo(message.from_user.id, hotel[1]['main_photo'],
+                #                caption=f'Название отеля: <b>{hotel[0]}</b>\n'
+                #                        f'Цена за ночь: <b>${round(price, 2)}</b>\n'
+                #                        f'За выбранный период \n'
+                #                        f'c "{check_in.strftime("%d %b %Y")}" '
+                #                        f'по "{check_out.strftime("%d %b %Y")}": '
+                #                        f'<b>${round(quantity_days * price, 2)}</b>\n'
+                #                        f'До центра: <b>{round((hotel[1]["to_the_center"] * 0.62137), 2)} км</b>\n'
+                #                        f'Подробнее: '
+                #                        f'https://www.hotels.com/h{hotel[1]["hotel_id"]}.Hotel-Information',
+                #                parse_mode='HTML')
+                media_group = []
+                text = '<b>Information</b>'
+                media_group.append(InputMediaPhoto(hotel[1]['main_photo'], caption=text, parse_mode='HTML'))
+                media_group.append(InputMediaPhoto(hotel[1]['main_photo']))
+                bot.send_media_group(message.from_user.id, media=media_group)
+                index += 1
+                if index > int(data["hotels_quantity"]):
+                    break
+        bot.set_state(message.from_user.id, SearchInfoState.command, message.chat.id)
     else:
-        bot.send_message(message.from_user.id, 'Введите количество фотографий (от 1 до 10).',
+        bot.send_message(message.from_user.id, 'Введите количество фотографий для каждого отеля (от 1 до 10).',
                          reply_markup=keyboard_numbers(keys))
+
+
+@bot.message_handler(state=SearchInfoState.command)
+def command(message):
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        selected_command = data['command']
+    bot.send_message(message.from_user.id, selected_command)

@@ -44,10 +44,10 @@ def update_user(conn, name, data):
                            f'VALUES("{name}", "{data}", {quantity + 1})')
     else:
         cur_data = cursor_obj.execute(
-            f'SELECT request, number_request from Requests WHERE name = "Bladgor"').fetchall()
+            f'SELECT request, number_request from Requests WHERE name = "{name}"').fetchall()
         for elem in cur_data[1:]:
             cursor_obj.execute(f'UPDATE Requests SET request = "{elem[0]}" '
-                               f'WHERE name = "Bladgor" AND number_request = {elem[1] - 1}')
+                               f'WHERE name = "{name}" AND number_request = {elem[1] - 1}')
         cursor_obj.execute(f'UPDATE Requests SET request = "{data}" '
                            f'WHERE name = "{name}" AND number_request = 10')
 
