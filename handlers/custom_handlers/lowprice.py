@@ -7,8 +7,8 @@ from database.data_processing import database_handler
 from api_request import search_id_location, search_hotels
 from Calendar.calendar import Calendar
 
-
 keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+star = '\u2B50'
 calendar_instance = Calendar()
 current_date = datetime.datetime.now()  # Установить начальную дату на текущий день текущего месяца
 calendar_instance.current_date, calendar_instance.bot = current_date, bot
@@ -17,6 +17,7 @@ calendar_instance.current_date, calendar_instance.bot = current_date, bot
 def date_str_to_datetime(date_text):
     date_text = list(map(int, date_text.split('.')))
     date_text = datetime.date(date_text[2], date_text[1], date_text[0])
+
     return date_text
 
 
@@ -37,6 +38,19 @@ def city_markup(city):
             callback_data=f'id {cities[city]}'))
 
     return destinations
+
+
+def add_photo_to_media(photos_list, text, quant_photo):
+    media = []
+    for index, photo in enumerate(photos_list):
+        if index == quant_photo:
+            break
+        if index == 0:
+            media.append(InputMediaPhoto(photo, caption=text, parse_mode='HTML'))
+        else:
+            media.append(InputMediaPhoto(photo))
+
+    return media
 
 
 @bot.message_handler(commands=['low', 'high', 'custom'])
@@ -66,17 +80,6 @@ def get_city(message: Message) -> None:
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             data['city'] = message.text.title()
         bot.send_message(message.from_user.id, 'Уточните, пожалуйста:', reply_markup=city_markup(message.text.title()))
-        #  Строку выше надо будет вернуть, строки ниже удалить
-        #  Для теста, чтобы не делать постоянные запросы к API:
-        # buttons = InlineKeyboardMarkup()
-        # city_dict = {'London, England': 'id 2114', 'London, USA': '5885'}
-        # for city in city_dict:
-        #     buttons.add(InlineKeyboardButton(
-        #         text=city,
-        #         callback_data=f'{city_dict[city]}'
-        #     ))
-        # bot.send_message(message.from_user.id, 'Уточните, пожалуйста:', reply_markup=buttons)
-    #
     else:
         bot.send_message(message.from_user.id, 'Город может содержать только буквы.')
 
@@ -123,11 +126,11 @@ def check_in_callback(call):
 
 @bot.callback_query_handler(func=lambda call: 'check_in' in call.data)
 def check_out_callback(call):
-    today = datetime.datetime.now()
+    today = datetime.datetime.today().date()
     check_in_date = list(map(int, (call.data.split(' ')[1]).split('.')))
     selected_date = datetime.datetime(check_in_date[2],
                                       check_in_date[1],
-                                      check_in_date[0])
+                                      check_in_date[0]).date()
     if selected_date < today:
         header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_in')
         bot.send_message(call.from_user.id,
@@ -147,11 +150,13 @@ def check_out_callback(call):
 def choice_callback(call):
     with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
         check_in_date = list(map(int, data['check_in'].split('.')))
-        check_in_date = datetime.datetime(check_in_date[2], check_in_date[1], check_in_date[0])
+        check_in_date = datetime.datetime(check_in_date[2],
+                                          check_in_date[1],
+                                          check_in_date[0]).date()
     check_out_date = list(map(int, (call.data.split(' ')[1]).split('.')))
     selected_date = datetime.datetime(check_out_date[2],
                                       check_out_date[1],
-                                      check_out_date[0])
+                                      check_out_date[0]).date()
     if selected_date <= check_in_date:
         header, markup = calendar_instance.send_calendar(call.message.chat.id, check_in_out='check_out')
         bot.send_message(call.from_user.id,
@@ -193,18 +198,39 @@ def get_confirm_photo(message: Message) -> None:
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             data['photo_quantity'] = 0
 
+        text = (f'Спасибо за обращение. Ваш запрос обрабатывается.\n'
+                f'Пожалуйста, подождите...')
+        bot.send_message(message.from_user.id, text, reply_markup=ReplyKeyboardRemove())
+
         database_handler(message.from_user.full_name, data)
 
-        text = f'Спасибо за предоставленную информацию. Ваши данные:\n' \
-               f'Город: {data["city"]}\n' \
-               f'Кол-во отелей: {data["hotels_quantity"]}\n' \
-               f'Вывод фото: {data["confirm_photo"]}\n' \
-               f'Кол-во фото: {data["photo_quantity"]}\n'
-        bot.send_message(message.from_user.id, text, reply_markup=ReplyKeyboardRemove())
-        if data['command'] == '/low':
-            bot.send_message(message.from_user.id, 'Command /low')
-        bot.set_state(message.from_user.id, SearchInfoState.command, message.chat.id)
-        # bot.delete_state(message.from_user.id, message.chat.id)
+        check_in = date_str_to_datetime(data['check_in'])
+        check_out = date_str_to_datetime(data['check_out'])
+        quantity_days = (check_out - check_in).days
+        hotels = search_hotels(city_id=data['city_id'],
+                               check_in=check_in,
+                               check_out=check_out,
+                               quant_photo=data['photo_quantity'])
+        index = 1
+        for hotel in hotels:
+            price = round(hotel[1]["price"], 2)
+            distance_to_the_center = round((hotel[1]["to_the_center"] * 0.62137), 2)
+            information = (f'Название отеля: <b>{hotel[0]}</b>\n'
+                           f'Рейтинг: <b>{hotel[1]["rating"]}</b>'
+                           f'Цена за ночь: <b>${price}</b>\n'
+                           f'За выбранный период \n'
+                           f'c "{check_in.strftime("%d %b %Y")}" '
+                           f'по "{check_out.strftime("%d %b %Y")}": '
+                           f'<b>${quantity_days * price}</b>\n'
+                           f'До центра: <b>{distance_to_the_center} км</b>\n'
+                           f'Подробнее: '
+                           f'https://www.hotels.com/h{hotel[1]["hotel_id"]}.Hotel-Information')
+
+            bot.send_message(message.from_user.id, information, parse_mode='HTML')
+            index += 1
+            if index > int(data["hotels_quantity"]):
+                break
+        bot.delete_state(message.from_user.id, message.chat.id)
 
 
 @bot.message_handler(state=SearchInfoState.photo_quantity)
@@ -215,48 +241,45 @@ def get_photo_quantity(message: Message) -> None:
 
         database_handler(message.from_user.full_name, data)
 
-        text = f'Спасибо за предоставленную информацию. Ваши данные:\n' \
-               f'Город: {data["city"]}\n' \
-               f'Кол-во отелей: {data["hotels_quantity"]}\n' \
-               f'Вывод фото: {data["confirm_photo"]}\n' \
-               f'Кол-во фото: {data["photo_quantity"]}\n'
+        text = (f'Спасибо за обращение. Ваш запрос обрабатывается.\n'
+                f'Пожалуйста, подождите...')
         bot.send_message(message.from_user.id, text, reply_markup=ReplyKeyboardRemove())
         if data['command'] == '/low':
-            check_in, check_out = date_str_to_datetime(data['check_in']), date_str_to_datetime(data['check_out'])
+            check_in = date_str_to_datetime(data['check_in'])
+            check_out = date_str_to_datetime(data['check_out'])
             quantity_days = (check_out - check_in).days
             hotels = search_hotels(city_id=data['city_id'],
                                    check_in=check_in,
-                                   check_out=check_out)
+                                   check_out=check_out,
+                                   quant_photo=data['photo_quantity'])
             index = 1
             for hotel in hotels:
-                price = hotel[1]["price"]
-                # bot.send_photo(message.from_user.id, hotel[1]['main_photo'],
-                #                caption=f'Название отеля: <b>{hotel[0]}</b>\n'
-                #                        f'Цена за ночь: <b>${round(price, 2)}</b>\n'
-                #                        f'За выбранный период \n'
-                #                        f'c "{check_in.strftime("%d %b %Y")}" '
-                #                        f'по "{check_out.strftime("%d %b %Y")}": '
-                #                        f'<b>${round(quantity_days * price, 2)}</b>\n'
-                #                        f'До центра: <b>{round((hotel[1]["to_the_center"] * 0.62137), 2)} км</b>\n'
-                #                        f'Подробнее: '
-                #                        f'https://www.hotels.com/h{hotel[1]["hotel_id"]}.Hotel-Information',
-                #                parse_mode='HTML')
-                media_group = []
-                text = '<b>Information</b>'
-                media_group.append(InputMediaPhoto(hotel[1]['main_photo'], caption=text, parse_mode='HTML'))
-                media_group.append(InputMediaPhoto(hotel[1]['main_photo']))
+                price = round(hotel[1]["price"], 2)
+                distance_to_the_center = round((hotel[1]["to_the_center"] * 0.62137), 2)
+                information = (f'Название отеля: <b>{hotel[0]}</b>\n'
+                               f'Рейтинг: <b>{hotel[1]["rating"]}</b>\n'
+                               f'Цена за ночь: <b>${price}</b>\n'
+                               f'За выбранный период \n'
+                               f'c "{check_in.strftime("%d %b %Y")}" '
+                               f'по "{check_out.strftime("%d %b %Y")}": '
+                               f'<b>${quantity_days * price}</b>\n'
+                               f'До центра: <b>{distance_to_the_center} км</b>\n'
+                               f'Подробнее: '
+                               f'https://www.hotels.com/h{hotel[1]["hotel_id"]}.Hotel-Information')
+                media_group = add_photo_to_media(hotel[1]['photos'], information, int(data["photo_quantity"]))
+
                 bot.send_media_group(message.from_user.id, media=media_group)
                 index += 1
                 if index > int(data["hotels_quantity"]):
                     break
-        bot.set_state(message.from_user.id, SearchInfoState.command, message.chat.id)
+        bot.delete_state(message.from_user.id, message.chat.id)
     else:
         bot.send_message(message.from_user.id, 'Введите количество фотографий для каждого отеля (от 1 до 10).',
                          reply_markup=keyboard_numbers(keys))
 
 
-@bot.message_handler(state=SearchInfoState.command)
-def command(message):
-    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        selected_command = data['command']
-    bot.send_message(message.from_user.id, selected_command)
+# @bot.message_handler(state=SearchInfoState.command)
+# def command(message):
+#     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+#         selected_command = data['command']
+#     bot.send_message(message.from_user.id, selected_command)

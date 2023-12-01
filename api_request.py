@@ -82,16 +82,19 @@ def search_id_location(city):
     return dict_city
 
 
-def search_hotels(city_id, check_in=None, check_out=None, adults=1, children=None, to_the_center=None):
-    if check_in is None and check_out is None:
+def search_hotels(city_id, check_in=None, check_out=None, adults=1, children=None, to_the_center=None,
+                  min_price=1, max_price=150, quant_photo=1):
+    if check_in is None and check_out is None:  # Для команды /low
         check_in = datetime.now() + timedelta(days=1)
         check_out = check_in + timedelta(days=1)
+    if children is None:
+        children = []
     method = "properties/v2/list"
     request_type = 'POST'
     querystring = {
         "currency": "USD",
         "eapid": 1,
-        "locale": "en_US",
+        "locale": "ru_RU",
         "siteId": 300000001,
         "destination": {"regionId": city_id},
         "checkInDate": {
@@ -106,43 +109,74 @@ def search_hotels(city_id, check_in=None, check_out=None, adults=1, children=Non
         },
         "rooms": [
             {
-                "adults": 1,
-                "children": []
+                "adults": adults,
+                "children": children
             }
         ],
         "resultsStartingIndex": 0,
         "resultsSize": 20,
         "sort": "PRICE_LOW_TO_HIGH",
         "filters": {"price": {
-            "max": 100,
-            "min": 1
+            "max": max_price,
+            "min": min_price
         }}
     }
-    # querystring = json.dumps(querystring)
 
     post_headers = {
         "content-type": "application/json",
         "X-RapidAPI-Key": RAPID_API_KEY,
         "X-RapidAPI-Host": "hotels4.p.rapidapi.com"
     }
-    my_response = api_request(method_endswith=method,
-                              params=querystring,
-                              method_type=request_type,
-                              headers=post_headers)
+    response = api_request(method_endswith=method,
+                           params=querystring,
+                           method_type=request_type,
+                           headers=post_headers)
 
+    hotels_list = response['data']['propertySearch']['properties']
     hotels_dict = dict()
-    hotels_list = my_response['data']['propertySearch']['properties']
-    # hotels_list = []
-
     for elem in hotels_list:
+        photos = get_photos_rating(elem['id'], quant_photo)
+
         hotels_dict[elem['name']] = {
             'hotel_id': elem['id'],
             'price': elem['price']['lead']['amount'],
-            # 'price': elem['price']['strikeOut']['amount'],
             'to_the_center': elem['destinationInfo']['distanceFromDestination']['value'],
-            'main_photo': elem['propertyImage']['image']['url']
+            'photos': photos,
+            'rating': elem['reviews']['score']
         }
 
     hotels_sorted = sorted(hotels_dict.items(), key=lambda item: float(item[1]['price']))
 
     return hotels_sorted
+
+
+def get_photos_rating(hotel_id, quant_photo):
+    method = "properties/v2/detail"
+    request_type = 'POST'
+
+    querystring = {
+        "currency": "USD",
+        "eapid": 1,
+        "locale": "ru_RU",
+        "siteId": 300000001,
+        "propertyId": f"{hotel_id}"
+    }
+    post_headers = {
+        "content-type": "application/json",
+        "X-RapidAPI-Key": RAPID_API_KEY,
+        "X-RapidAPI-Host": "hotels4.p.rapidapi.com"
+    }
+
+    response = api_request(method_endswith=method,
+                           params=querystring,
+                           method_type=request_type,
+                           headers=post_headers)
+
+    images = response['data']['propertyInfo']['propertyGallery']['images']
+    photos_list = []
+    for index, image in enumerate(images):
+        if index == quant_photo:
+            break
+        photos_list.append(image['image']['url'])
+
+    return photos_list

@@ -13,20 +13,14 @@ def hello(message):
     markup = InlineKeyboardMarkup()
     commands = ['low', 'high', 'custom', 'history', 'help']
     for elem in commands:
-        print(elem, type(elem))
         markup.add(InlineKeyboardButton(
             text=elem,
             callback_data=elem
         ))
-    msg = bot.send_message(message.from_user.id, 'Привет, Мир!', reply_markup=markup)
-    bot.register_next_step_handler(msg, send)
+
+    star = '\u2B50'
+    print(star, type(star))
+    bot.send_message(message.from_user.id, f'Привет, Мир!{star}', parse_mode='HTML')
 
 
-@bot.callback_query_handler(func=lambda call: True)
-def my_callback(call):
-    bot.send_message(call.from_user.id, f'Выбрано {call.data}')
-
-
-@bot.message_handler(content_types=['text'])
-def send(message):
-    bot.send_message(message.from_user.id, 'Конец!')
+bot.polling()
