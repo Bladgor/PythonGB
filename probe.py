@@ -2,7 +2,7 @@ import datetime
 import telebot
 
 # Создание экземпляра бота
-bot = telebot.TeleBot('5562447993:AAHxkSOD7HsgYawjsfb_wSRI-e9li_xhE6s')
+bot = telebot.TeleBot()
 
 
 @bot.message_handler(commands=['start'])
